@@ -249,7 +249,6 @@ th{color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.
           <div id="c-filest" class="help"></div>
           <label>Opción B · O pega aquí el contenido del tema</label>
           <textarea id="c-texto" rows="7" placeholder="Pega aquí los apuntes, la guía o el contenido del módulo…"></textarea>
-          <div class="warn" id="c-nokey" style="display:none">⚠️ Falta la clave de Google para generar preguntas. Ve a <b>⚙️ Configuración</b> y pégala (toma 2 minutos conseguirla, ahí están los pasos).</div>
           <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
             <button class="btn gold" id="c-genbtn" onclick="generarPreguntas()">✨ Crear las preguntas automáticamente</button>
             <button class="btn ghost" onclick="cGo(1)">← Atrás</button>
@@ -281,17 +280,9 @@ th{color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.
 
       <!-- TAB CONFIG -->
       <div id="at-conf" style="display:none">
-        <h2>🔑 Clave de Google para crear preguntas</h2>
-        <p class="muted" style="font-size:14px">La plataforma usa la inteligencia artificial gratuita de Google (Gemini) para convertir tus documentos en preguntas. Solo necesitas pegar tu clave una vez en este computador.</p>
-        <div class="note"><b>¿Cómo consigo la clave? (2 minutos, gratis)</b><br>
-        1. Entra a <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--cyan)">aistudio.google.com/apikey</a> con tu cuenta de Gmail.<br>
-        2. Pulsa el botón azul <b>"Create API key"</b> (Crear clave).<br>
-        3. Copia la clave (empieza por "AIza…") y pégala aquí abajo.</div>
-        <label>Pega aquí tu clave</label><input id="cf-key" type="password" placeholder="AIza…">
-        <div class="linkrow">
-          <button class="btn gold sm" onclick="saveKey()">Guardar clave</button>
-          <button class="btn ghost sm" onclick="testKey()">Probar que funciona</button>
-        </div>
+        <h2>🤖 Inteligencia artificial incluida</h2>
+        <p class="muted" style="font-size:14px">La creación automática de preguntas ya viene integrada en la plataforma. No necesitas claves, cuentas ni configurar nada: solo sube tu documento en <b>➕ Crear evaluación</b>.</p>
+        <div class="linkrow"><button class="btn ghost sm" onclick="testIA()">Probar que la IA responde</button></div>
         <div id="cf-keyst" class="help" style="margin-top:8px"></div>
         <hr style="border:none;border-top:1px solid var(--border);margin:22px 0">
         <h2>🔐 Cambiar contraseña del panel</h2>
@@ -454,7 +445,6 @@ function adminTab(t){
     $("at-"+x).style.display=(x===t)?"":"none";
     $("tab-"+x).classList.toggle("on",x===t);
   });
-  if(t==="conf"){const k=localStorage.getItem(LS+"gkey");$("cf-key").value=k||"";}
 }
 async function loadAdmin(){
   // evaluaciones
@@ -529,7 +519,6 @@ let docText="";
 function cGo(n){
   ["cstep1","cstep2","cstep3"].forEach((id,i)=>$(id).style.display=(i===n-1)?"":"none");
   [1,2,3].forEach(i=>{const e=$("st"+i);e.className="stp"+(i===n?" on":i<n?" done":"");});
-  if(n===2){$("c-nokey").style.display=localStorage.getItem(LS+"gkey")?"none":"";}
 }
 $("c-file").addEventListener("change",async ev=>{
   const f=ev.target.files[0]; if(!f) return;
@@ -550,8 +539,6 @@ $("c-file").addEventListener("change",async ev=>{
   }catch(e){$("c-filest").textContent="⚠️ No pude leer ese archivo. Prueba con PDF, Word (.docx) o pega el texto en la Opción B.";docText="";}
 });
 async function generarPreguntas(){
-  const key=localStorage.getItem(LS+"gkey");
-  if(!key){$("c-nokey").style.display="";adminTab("conf");return;}
   const titulo=$("c-titulo").value.trim();
   if(!titulo){alert("Vuelve al paso 1 y escribe el nombre del tema.");cGo(1);return;}
   const material=(docText||$("c-texto").value).trim();
@@ -566,33 +553,36 @@ Responde SOLO un arreglo JSON válido con objetos: {"q":"...","opts":["...","...
 MATERIAL:
 ${material.slice(0,25000)}`;
   try{
-    const qs=await gemini(key,prompt);
+    const qs=await iaGenerar(prompt);
     draft={slug:slugify(titulo)+"-"+Date.now().toString(36).slice(-4),titulo,curso:$("c-curso").value.trim(),nq,min:+$("c-min").value,preguntas:qs,fecha:new Date().toISOString()};
     renderDraft(); cGo(3); stl.innerHTML="";
   }catch(e){
-    stl.innerHTML=`<div class="warn">⚠️ No se pudieron crear las preguntas: ${esc(e.message)}.<br>Verifica tu clave en ⚙️ Configuración (botón "Probar que funciona") e inténtalo de nuevo.</div>`;
+    stl.innerHTML=`<div class="warn">⚠️ No se pudieron crear las preguntas: ${esc(e.message)}.<br>Revisa tu conexión a internet e inténtalo de nuevo en un minuto.</div>`;
   }
   $("c-genbtn").disabled=false;
 }
-async function gemini(key,prompt){
-  const models=["gemini-2.5-flash","gemini-2.0-flash"];
+async function iaGenerar(prompt){
+  const t=await getToken(); if(!t) throw new Error("sin conexión con el servidor");
+  const models=["openai/gpt-4.1","openai/gpt-4o","openai/gpt-4o-mini"];
   let lastErr="";
   for(const m of models){
     try{
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${key}`,{
-        method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:.4,responseMimeType:"application/json"}})
+      const r=await fetch("https://models.github.ai/inference/chat/completions",{
+        method:"POST",headers:{"Authorization":"Bearer "+t,"Content-Type":"application/json"},
+        body:JSON.stringify({model:m,messages:[{role:"user",content:prompt}],temperature:.4,max_tokens:8000})
       });
       const d=await r.json();
       if(!r.ok){lastErr=d.error?.message||("HTTP "+r.status);continue;}
-      let txt=d.candidates?.[0]?.content?.parts?.[0]?.text||"";
+      let txt=d.choices?.[0]?.message?.content||"";
       txt=txt.replace(/```json|```/g,"").trim();
+      const a=txt.indexOf("["),b=txt.lastIndexOf("]");
+      if(a>=0&&b>a) txt=txt.slice(a,b+1);
       const arr=JSON.parse(txt);
       if(!Array.isArray(arr)||!arr.length) throw new Error("respuesta vacía");
       return arr.filter(q=>q.q&&Array.isArray(q.opts)&&q.opts.length===4&&q.correct>=0&&q.correct<=3);
     }catch(e){lastErr=e.message;}
   }
-  throw new Error(lastErr||"sin respuesta de Google");
+  throw new Error(lastErr||"la IA no respondió");
 }
 function slugify(s){return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,40);}
 function renderDraft(){
@@ -631,20 +621,11 @@ async function publicarEval(){
 }
 
 /* ============ CONFIG ============ */
-function saveKey(){
-  const k=$("cf-key").value.trim();
-  if(!k.startsWith("AIza")||k.length<25){$("cf-keyst").textContent="Esa no parece una clave válida (debe empezar por AIza…).";return;}
-  localStorage.setItem(LS+"gkey",k);
-  $("cf-keyst").textContent="✅ Clave guardada en este computador. ¡Ya puedes crear evaluaciones!";
-}
-async function testKey(){
-  const k=$("cf-key").value.trim()||localStorage.getItem(LS+"gkey");
-  if(!k){$("cf-keyst").textContent="Primero pega la clave.";return;}
+async function testIA(){
   $("cf-keyst").innerHTML="<span class='spin'></span>Probando…";
-  try{await gemini(k,'Responde SOLO este JSON: [{"q":"ok","opts":["a","b","c","d"],"correct":0,"feedbackOk":"ok","feedbackFail":"ok"}]');
-    localStorage.setItem(LS+"gkey",k);
-    $("cf-keyst").textContent="✅ ¡Funciona! Clave guardada.";
-  }catch(e){$("cf-keyst").textContent="❌ No funcionó: "+e.message;}
+  try{await iaGenerar('Responde SOLO este JSON: [{"q":"ok","opts":["a","b","c","d"],"correct":0,"feedbackOk":"ok","feedbackFail":"ok"}]');
+    $("cf-keyst").textContent="✅ La IA responde correctamente. Todo listo.";
+  }catch(e){$("cf-keyst").textContent="❌ "+e.message;}
 }
 function copyLink(){
   navigator.clipboard.writeText(location.href.split("#")[0].split("?")[0]).then(()=>{
