@@ -121,6 +121,15 @@ th{color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.
 .lvl.a{background:rgba(16,185,129,.13);color:var(--green);border:1px solid rgba(16,185,129,.4)}
 .lvl.p{background:rgba(0,212,255,.12);color:var(--cyan);border:1px solid rgba(0,212,255,.4)}
 .lvl.r{background:rgba(230,57,70,.13);color:#ff6b75;border:1px solid rgba(230,57,70,.45)}
+details.acc{background:var(--surface2);border:1px solid var(--border2);border-radius:13px;margin-bottom:10px;overflow:hidden}
+details.acc summary{display:flex;align-items:center;gap:10px;cursor:pointer;padding:13px 16px;font-size:13.5px;list-style:none;user-select:none}
+details.acc summary::-webkit-details-marker{display:none}
+details.acc summary::before{content:"▸";color:var(--gold);font-weight:800;flex-shrink:0;transition:transform .15s}
+details.acc[open] summary::before{transform:rotate(90deg)}
+details.acc[open] summary{border-bottom:1px solid var(--border)}
+details.acc .accbody{padding:13px 16px}
+details.acc summary .mini{flex:1;min-width:60px;max-width:140px;height:7px;background:var(--surface3);border-radius:999px;overflow:hidden}
+details.acc summary .mini i{display:block;height:100%;border-radius:999px}
 .foot{text-align:center;color:var(--dim);font-size:12px;margin-top:26px;line-height:1.7}
 .help{font-size:12.5px;color:var(--muted);margin-top:5px}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -535,7 +544,17 @@ function renderResults(){
   chDist=new Chart($("ch-dist"),{type:"bar",data:{labels:["0-59","60-74","75-89","90-100"],datasets:[{data:rangos,backgroundColor:["#e63946","#00d4ff","#10b981","#ffd43b"],borderRadius:9,borderSkipped:false,maxBarThickness:64}]},options:{plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{color:tickC,font:{weight:"bold"}}},y:{beginAtZero:true,grid:{color:gridC},ticks:{color:tickC,precision:0}}}}});
   chNiv=new Chart($("ch-niv"),{type:"doughnut",data:{labels:["⭐ Sobresaliente","✅ Satisfactorio","⚠️ En proceso","🔴 Refuerzo"],datasets:[{data:[rangos[3],rangos[2],rangos[1],rangos[0]],backgroundColor:["#ffd43b","#10b981","#00d4ff","#e63946"],borderColor:"#0e2138",borderWidth:3,hoverOffset:8}]},options:{cutout:"62%",plugins:{legend:{position:"bottom",labels:{color:tickC,boxWidth:12,padding:12}}}}});
   // por pregunta
-  qb.innerHTML=qstats.map(qs=>`<div class="bar-row"><div class="bar-top"><span>P${qs.i+1}. ${esc(qs.q.slice(0,90))}${qs.q.length>90?"…":""}</span><b style="color:${qs.p<60?'#ff6b75':qs.p<80?'var(--gold)':'var(--green)'}">${qs.p}%</b></div><div class="bar-bg"><div class="bar-fill" style="width:${qs.p}%;background:${qs.p<60?'linear-gradient(90deg,#8f1d22,#e63946)':qs.p<80?'linear-gradient(90deg,#8a6508,#ffd43b)':'linear-gradient(90deg,#0a7a55,#10b981)'}"></div></div></div>`).join("")||"<div class='muted'>Sin detalle por pregunta.</div>";
+  qb.innerHTML=qstats.map(qs=>{
+    const q=ev.def.preguntas[qs.i];
+    const col=qs.p<60?'#ff6b75':qs.p<80?'var(--gold)':'var(--green)';
+    const grad=qs.p<60?'linear-gradient(90deg,#8f1d22,#e63946)':qs.p<80?'linear-gradient(90deg,#8a6508,#ffd43b)':'linear-gradient(90deg,#0a7a55,#10b981)';
+    const opts=q.opts.map((o,j)=>{
+      const c=rows.filter(r=>r.respuestas&&r.respuestas[qs.i]===j).length;
+      const pct=rows.length?Math.round(c/rows.length*100):0;
+      return `<div class="bar-row"><div class="bar-top"><span>${j===q.correct?"✅ <b>":"&nbsp;&nbsp;&nbsp;"}${esc(o)}${j===q.correct?"</b>":""}</span><b style="color:${j===q.correct?'var(--green)':'var(--muted)'}">${c} (${pct}%)</b></div><div class="bar-bg"><div class="bar-fill" style="width:${pct}%;background:${j===q.correct?'linear-gradient(90deg,#0a7a55,#10b981)':'#41587a'}"></div></div></div>`;
+    }).join("");
+    return `<details class="acc"><summary><span style="flex:2">P${qs.i+1}. ${esc(qs.q.slice(0,75))}${qs.q.length>75?"…":""}</span><span class="mini"><i style="width:${qs.p}%;background:${grad}"></i></span><b style="color:${col};flex-shrink:0">${qs.p}%</b></summary><div class="accbody"><div class="muted" style="font-size:13px;margin-bottom:10px">${esc(qs.q)}</div>${opts}</div></details>`;
+  }).join("")||"<div class='muted'>Sin detalle por pregunta.</div>";
   renderTable();
 }
 function renderTable(){
@@ -625,13 +644,16 @@ async function iaGenerar(prompt){
 function slugify(s){return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,40);}
 function renderDraft(){
   $("c-qlist").innerHTML=draft.preguntas.map((q,i)=>`
-    <div class="qedit" data-i="${i}">
-      <div style="font-weight:800;color:var(--gold);font-size:13px;margin-bottom:6px">Pregunta ${i+1} <button class="btn ghost sm" style="float:right;padding:4px 10px" onclick="delQ(${i})">🗑 Quitar</button></div>
-      <textarea rows="2" class="eq">${esc(q.q)}</textarea>
-      ${q.opts.map((o,j)=>`<div class="orow"><input type="radio" name="c${i}" ${j===q.correct?"checked":""} title="Marcar como correcta"><input type="text" class="eo" value="${esc(o)}"></div>`).join("")}
-      <label style="margin-top:8px">Mensaje si acierta</label><textarea rows="1" class="efo">${esc(q.feedbackOk||"")}</textarea>
-      <label>Mensaje si falla</label><textarea rows="1" class="eff">${esc(q.feedbackFail||"")}</textarea>
-    </div>`).join("");
+    <details class="acc">
+      <summary><b style="color:var(--gold);flex-shrink:0">Pregunta ${i+1}</b><span style="flex:1;color:var(--muted)">${esc(q.q.slice(0,70))}${q.q.length>70?"…":""}</span></summary>
+      <div class="qedit" data-i="${i}" style="border:none;border-radius:0;margin:0">
+        <div style="text-align:right;margin-bottom:6px"><button class="btn ghost sm" style="padding:4px 10px" onclick="delQ(${i})">🗑 Quitar esta pregunta</button></div>
+        <textarea rows="2" class="eq">${esc(q.q)}</textarea>
+        ${q.opts.map((o,j)=>`<div class="orow"><input type="radio" name="c${i}" ${j===q.correct?"checked":""} title="Marcar como correcta"><input type="text" class="eo" value="${esc(o)}"></div>`).join("")}
+        <label style="margin-top:8px">Mensaje si acierta</label><textarea rows="1" class="efo">${esc(q.feedbackOk||"")}</textarea>
+        <label>Mensaje si falla</label><textarea rows="1" class="eff">${esc(q.feedbackFail||"")}</textarea>
+      </div>
+    </details>`).join("");
 }
 function delQ(i){draft.preguntas.splice(i,1);renderDraft();}
 function readDraftEdits(){
